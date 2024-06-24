@@ -15,6 +15,7 @@
 $correlationField = $actionContext.CorrelationConfiguration.accountField
 $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
 
+$account = $actionContext.Data
 $accountPropertiesToCompare = $account.PsObject.Properties.Name
 #endRegion account
 

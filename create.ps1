@@ -14,6 +14,8 @@
 # Define correlation
 $correlationField = $actionContext.CorrelationConfiguration.accountField
 $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+
+$account = $actionContext.Data
 #endRegion account
 
 try {
@@ -37,8 +39,12 @@ try {
     #region Import CSV data
     $actionMessage = "importing data from CSV file at path [$($actionContext.Configuration.CsvPath)]"
 
+    # Only load csv file when it exists
     $csvContent = $null
-    $csvContent = Import-Csv -Path $actionContext.Configuration.CsvPath -Delimiter $actionContext.Configuration.Delimiter -Encoding $actionContext.Configuration.Encoding
+    if (Test-Path $actionContext.Configuration.CsvPath) {
+
+        $csvContent = Import-Csv -Path $actionContext.Configuration.CsvPath -Delimiter $actionContext.Configuration.Delimiter -Encoding $actionContext.Configuration.Encoding
+    }
 
     # Group on correlation field to match employee to CSV row(s)
     $csvContentGrouped = $csvContent | Group-Object -Property $correlationField -AsString -AsHashTable
@@ -97,7 +103,12 @@ try {
             }
 
             if (-Not($actionContext.DryRun -eq $true)) {
-                $null = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
+                if (Test-Path $actionContext.Configuration.CsvPath) {
+                    $null = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
+                }
+                else {
+                    $account | Export-Csv @exportCsvSplatParams                    
+                }
 
                 #region Set AccountReference
                 $outputContext.AccountReference = "$($correlationValue)"
