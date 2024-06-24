@@ -3,26 +3,17 @@
 # Update csv row
 # PowerShell V2
 #################################################
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($actionContext.Configuration.isDebug) {
-    $true { $VerbosePreference = "Continue" }
-    $false { $VerbosePreference = "SilentlyContinue" }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
 
 #region functions
 #endregion functions
 
 #region account
 # Define correlation
-$correlationField = "EmployeeId"
-$correlationValue = $actionContext.References.Account
-
-$account = [PSCustomObject]$actionContext.Data
+$correlationField = $actionContext.CorrelationConfiguration.accountField
+$correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
 
 $accountPropertiesToCompare = $account.PsObject.Properties.Name
 #endRegion account
@@ -37,10 +28,10 @@ try {
 
     #region Import CSV data
     $actionMessage = "importing data from CSV file at path [$($actionContext.Configuration.CsvPath)]"
-   
+
     $csvContent = $null
     $csvContent = Import-Csv -Path $actionContext.Configuration.CsvPath -Delimiter $actionContext.Configuration.Delimiter -Encoding $actionContext.Configuration.Encoding
-   
+
     # Group on correlation field to match employee to CSV row(s)
     $csvContentGrouped = $csvContent | Group-Object -Property $correlationField -AsString -AsHashTable
 
@@ -50,13 +41,13 @@ try {
     if ($actionContext.CorrelationConfiguration.Enabled -eq $true) {
         #region Get current row for person
         $actionMessage = "querying CSV row where [$($correlationField)] = [$($correlationValue)]"
-       
+
         $currentRow = $null
-        if ($csvContentGrouped -ne $null) {
+        if ($null -ne $csvContentGrouped) {
             $currentRow = $csvContentGrouped["$($correlationValue)"]
         }
 
-        Write-Verbose "Queried CSV row where [$($correlationField)] = [$($correlationValue)]. Result count: $(($currentRow | Measure-Object).Count)"
+        Write-Information "Queried CSV row where [$($correlationField)] = [$($correlationValue)]. Result count: $(($currentRow | Measure-Object).Count)"
         #endregion Get current row for person
     }
 
@@ -100,7 +91,7 @@ try {
         }
         else {
             $action = "NoChanges"
-        }            
+        }
 
         Write-Verbose "Compared current account to mapped properties. Result: $action"
     }
@@ -152,9 +143,7 @@ try {
             }
 
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($exportCsvSplatParams | ConvertTo-Json)"
-
-                $updatedCsv = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
+                $null = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
 
                 #region Set AccountReference
                 $outputContext.AccountReference = "$($correlationValue)"
@@ -177,7 +166,7 @@ try {
         "NoChanges" {
             #region No changes
             $actionMessage = "skipping updating row in CSV"
-            
+
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped updating row in CSV with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: No changes."
@@ -202,7 +191,7 @@ try {
         "NotFound" {
             #region No account found
             $actionMessage = "updating row in CSV"
-        
+
             # Throw terminal error
             throw "No CSV row found where [$($correlationField)] = [$($correlationValue)]. Possibly indicating that it could be deleted, or not correlated."
             #endregion No account found

@@ -3,16 +3,9 @@
 # Create and update or correlate to csv row
 # PowerShell V2
 #################################################
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
-
-# Set debug logging
-switch ($actionContext.Configuration.isDebug) {
-    $true { $VerbosePreference = "Continue" }
-    $false { $VerbosePreference = "SilentlyContinue" }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
 
 #region functions
 #endregion functions
@@ -21,8 +14,6 @@ $WarningPreference = "Continue"
 # Define correlation
 $correlationField = $actionContext.CorrelationConfiguration.accountField
 $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
-
-$account = [PSCustomObject]$actionContext.Data
 #endRegion account
 
 try {
@@ -33,7 +24,7 @@ try {
         if ([string]::IsNullOrEmpty($correlationField)) {
             throw "Correlation is enabled but not configured correctly."
         }
-    
+
         if ([string]::IsNullOrEmpty($correlationValue)) {
             throw "The correlation value for [$correlationField] is empty. This is likely a mapping issue."
         }
@@ -45,28 +36,26 @@ try {
 
     #region Import CSV data
     $actionMessage = "importing data from CSV file at path [$($actionContext.Configuration.CsvPath)]"
-    
+
     $csvContent = $null
     $csvContent = Import-Csv -Path $actionContext.Configuration.CsvPath -Delimiter $actionContext.Configuration.Delimiter -Encoding $actionContext.Configuration.Encoding
-    
+
     # Group on correlation field to match employee to CSV row(s)
     $csvContentGrouped = $csvContent | Group-Object -Property $correlationField -AsString -AsHashTable
 
-    Write-Verbose "Imported data from CSV file at path [$($actionContext.Configuration.CsvPath)]. Result count: $(($csvContent | Measure-Object).Count)"
+    Write-Information "Imported data from CSV file at path [$($actionContext.Configuration.CsvPath)]. Result count: $(($csvContent | Measure-Object).Count)"
     #endregion Import CSV data
 
-    if ($actionContext.CorrelationConfiguration.Enabled -eq $true) {
-        #region Get current row for person
-        $actionMessage = "querying CSV row where [$($correlationField)] = [$($correlationValue)]"
-        
-        $currentRow = $null
-        if ($csvContentGrouped -ne $null) {
-            $currentRow = $csvContentGrouped["$($correlationValue)"]
-        }
+    #region Get current row for person
+    $actionMessage = "querying CSV row where [$($correlationField)] = [$($correlationValue)]"
 
-        Write-Verbose "Queried CSV row where [$($correlationField)] = [$($correlationValue)]. Result count: $(($currentRow | Measure-Object).Count)"
-        #endregion Get current row for person
+    $currentRow = $null
+    if ($null -ne $csvContentGrouped) {
+        $currentRow = $csvContentGrouped["$($correlationValue)"]
     }
+
+    Write-Information "Queried CSV row where [$($correlationField)] = [$($correlationValue)]. Result count: $(($currentRow | Measure-Object).Count)"
+    #endregion Get current row for person
 
     #region Account
     #region Calulate action
@@ -108,9 +97,7 @@ try {
             }
 
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($exportCsvSplatParams | ConvertTo-Json)"
-
-                $updatedCsv = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
+                $null = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
 
                 #region Set AccountReference
                 $outputContext.AccountReference = "$($correlationValue)"
@@ -138,7 +125,7 @@ try {
             $outputContext.Data = $currentRow
 
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Action  = "CorrelateAccount" # Optionally specify a different action for this audit log
+                    Action  = "CorrelateAccount"
                     Message = "Correlated to CSV row with AccountReference: $($outputContext.AccountReference | ConvertTo-Json) on [$($correlationField)] = [$($correlationValue)]."
                     IsError = $false
                 })

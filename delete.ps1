@@ -6,14 +6,6 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-# Set debug logging
-switch ($actionContext.Configuration.isDebug) {
-    $true { $VerbosePreference = "Continue" }
-    $false { $VerbosePreference = "SilentlyContinue" }
-}
-$InformationPreference = "Continue"
-$WarningPreference = "Continue"
-
 #region functions
 #endregion functions
 
@@ -21,8 +13,6 @@ $WarningPreference = "Continue"
 # Define correlation
 $correlationField = "EmployeeId"
 $correlationValue = $actionContext.References.Account
-
-$account = [PSCustomObject]$actionContext.Data
 #endRegion account
 
 try {
@@ -35,26 +25,26 @@ try {
 
     #region Import CSV data
     $actionMessage = "importing data from CSV file at path [$($actionContext.Configuration.CsvPath)]"
-   
+
     $csvContent = $null
     $csvContent = Import-Csv -Path $actionContext.Configuration.CsvPath -Delimiter $actionContext.Configuration.Delimiter -Encoding $actionContext.Configuration.Encoding
-   
+
     # Group on correlation field to match employee to CSV row(s)
     $csvContentGrouped = $csvContent | Group-Object -Property $correlationField -AsString -AsHashTable
 
-    Write-Verbose "Imported data from CSV file at path [$($actionContext.Configuration.CsvPath)]. Result count: $(($csvContent | Measure-Object).Count)"
+    Write-Information "Imported data from CSV file at path [$($actionContext.Configuration.CsvPath)]. Result count: $(($csvContent | Measure-Object).Count)"
     #endregion Import CSV data
 
     if ($actionContext.CorrelationConfiguration.Enabled -eq $true) {
         #region Get current row for person
         $actionMessage = "querying CSV row where [$($correlationField)] = [$($correlationValue)]"
-       
+
         $currentRow = $null
-        if ($csvContentGrouped -ne $null) {
+        if ($null -ne $csvContentGrouped) {
             $currentRow = $csvContentGrouped["$($correlationValue)"]
         }
 
-        Write-Verbose "Queried CSV row where [$($correlationField)] = [$($correlationValue)]. Result count: $(($currentRow | Measure-Object).Count)"
+        Write-Information "Queried CSV row where [$($correlationField)] = [$($correlationValue)]. Result count: $(($currentRow | Measure-Object).Count)"
         #endregion Get current row for person
     }
 
@@ -94,9 +84,7 @@ try {
             }
 
             if (-Not($actionContext.DryRun -eq $true)) {
-                Write-Verbose "SplatParams: $($exportCsvSplatParams | ConvertTo-Json)"
-
-                $updatedCsv = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
+                $null = $updatedCsvContent | Foreach-Object { $_ } | Export-Csv @exportCsvSplatParams
 
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
                         # Action  = "" # Optional
@@ -114,7 +102,7 @@ try {
 
         "MultipleFound" {
             #region Multiple accounts found
-            $actionMessage = "deleting row from CSV"
+            $actionMessage = "multiple rows found"
 
             # Throw terminal error
             throw "Multiple CSV rows found where [$($correlationField)] = [$($correlationValue)]. Please correct this so the persons are unique."
