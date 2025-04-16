@@ -24,7 +24,7 @@
     {
         "key": "Encoding",
         "type": "input",
-        "defaultValue": "",
+        "defaultValue": "utf8",
         "templateOptions": {
             "label": "Encoding",
             "placeholder": "utf8",
